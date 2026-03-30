@@ -81,10 +81,10 @@ existing_tables = {table.table_id for table in bq.list_tables(f"ebmdatalab.measu
 
 sql = "\nUNION ALL\n".join(
     f"SELECT * EXCEPT(stp_id, regional_team_id), '{prefix}' AS org_type, '{row['measure_id']}' AS measure "
-    f"FROM `{PROJECT}.{DATASET}.{prefix}_data_{row['measure_id']}`"
+    f"FROM `ebmdatalab.measures.{prefix}_data_{row['measure_id']}`"
     if prefix == "ccg" else
     f"SELECT *, '{prefix}' AS org_type, '{row['measure_id']}' AS measure "
-    f"FROM `{PROJECT}.{DATASET}.{prefix}_data_{row['measure_id']}`"
+    f"FROM `ebmdatalab.measures.{prefix}_data_{row['measure_id']}`"
     for _, row in measures_df.iterrows()
     if row["measure_id"]
     for prefix in PREFIXES
