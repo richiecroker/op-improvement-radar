@@ -8,7 +8,14 @@ from datetime import datetime, date
 from dateutil.relativedelta import relativedelta
 from urllib.parse import urlparse
 
+from google.cloud import bigquery, storage
+from google.oauth2 import service_account
 
+def _credentials():
+    return service_account.Credentials.from_service_account_info(st.secrets["gcp_service_account"])
+
+    def _bq_client():
+    return bigquery.Client(credentials=_credentials(), project="ebmdatalab")
 
 
 # ── Page config — must be first Streamlit command ─────────────────────────────
@@ -65,6 +72,22 @@ rows = [
 df = pd.DataFrame(rows)
 st.dataframe(df)
 
+PREFIXES = ["ccg", "pcn", "icb"]
+
+query = "\nUNION ALL\n".join(
+    f"SELECT *, '{prefix}' AS org_type, '{row['measure_id']}' AS measure_id "
+    f"FROM `my-project.my_dataset.{prefix}_{row['measure_id']}_data`"
+    for _, row in df.iterrows()
+    if row["measure_id"]
+    for prefix in PREFIXES
+)
+
+    bq = _bq_client()
+    try:
+        query_job = bq.query(sql)
+        df = query_job.result().to_dataframe()
+    
+    st.dataframe(df)
 
 
 # ── Information ─────────────────────────────────────────────────────────────────
