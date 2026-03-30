@@ -42,15 +42,32 @@ conn = get_duckdb_connection()
 #
 #selected_measure = st.selectbox("Select a measure", measures)
 
+conn = get_duckdb_connection()
+
 df = conn.execute(
     """
-        -- All filters chained; swap CTEs in/out to mirror config flags.
     WITH base AS (
         SELECT * FROM measures
         WHERE measure = 'aafpercent' AND org_type = 'ccg'
         ORDER BY month
     ),
-    ...
+    ranked AS (
+        SELECT *,
+            ROW_NUMBER() OVER (PARTITION BY code ORDER BY month)       AS rn_asc,
+            ROW_NUMBER() OVER (PARTITION BY code ORDER BY month DESC)  AS rn_desc
+        FROM base
+    ),
+    agg AS (
+        SELECT
+            code,
+            AVG(numerator)                                             AS mean_events,
+            AVG(CASE WHEN rn_asc  <= 6 THEN rate       END)           AS start_rate,
+            AVG(CASE WHEN rn_desc <= 6 THEN rate       END)           AS end_rate,
+            AVG(CASE WHEN rn_asc  <= 6 THEN percentile END)           AS start_pct,
+            AVG(CASE WHEN rn_desc <= 6 THEN percentile END)           AS end_pct
+        FROM ranked
+        GROUP BY code
+    ),
     valid AS (
         SELECT code,
             (start_pct - end_pct) AS pct_drop
@@ -70,6 +87,8 @@ df = conn.execute(
     """,
     [20, 10, 0.8, 0.4, 10]
 ).df()
+
+st.dataframe(df)
 
 st.dataframe(df)
 
