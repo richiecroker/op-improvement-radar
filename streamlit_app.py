@@ -76,6 +76,17 @@ st.dataframe(measures_df)
 
 PREFIXES = ["ccg", "pcn", "stp"]
 
+bq = _bq_client()
+existing_tables = {table.table_id for table in bq.list_tables("ebmdatalab.measures")}
+
+base_cols = ["month", "numerator", "denominator", "percentile"]
+
+org_id_col = {
+    "ccg": "pct_id",
+    "pcn": "pcn_id",
+    "stp": "stp_id",
+}
+
 progress = st.progress(0)
 status = st.empty()
 
