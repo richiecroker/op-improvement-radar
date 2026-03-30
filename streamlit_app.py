@@ -73,27 +73,48 @@ measures_df = pd.DataFrame(rows)
 st.dataframe(measures_df)
 
 
-
 PREFIXES = ["ccg", "pcn", "stp"]
 
 bq = _bq_client()
+existing_tables = {table.table_id for table in bq.list_tables("ebmdatalab.measures")}
 
-schemas = {
-    table.table_id: {f.name for f in bq.get_table(f"{PROJECT}.{DATASET}.{table.table_id}").schema}
-    for table in bq.list_tables(f"{PROJECT}.{DATASET}")
+base_cols = ["month", "numerator", "denominator", "percentile"]
+
+calc_value_source = {
+    "ccg": "calc_value",
+    "pcn": "calc_value",
+    "stp": "calc_value",
+    # tweak if any differ
 }
 
-common_cols = set.intersection(*schemas.values()) - {"regional_team_id"}
-col_list = ", ".join(sorted(common_cols))
+parts = []
 
-sql = "\nUNION ALL\n".join(
-    f"SELECT {col_list}, '{prefix}' AS org_type, '{row['measure_id']}' AS measure "
-    f"FROM `{PROJECT}.{DATASET}.{prefix}_data_{row['measure_id']}`"
-    for _, row in measures_df.iterrows()
-    if row["measure_id"]
-    for prefix in PREFIXES
-    if f"{prefix}_data_{row['measure_id']}" in existing_tables
-)
+for _, row in measures_df.iterrows():
+    measure_id = row["measure_id"]
+    if not measure_id:
+        continue
+
+    for prefix in PREFIXES:
+        table_name = f"{prefix}_data_{measure_id}"
+        if table_name not in existing_tables:
+            continue
+
+        source_col = calc_value_source[prefix]
+
+        select_sql = ", ".join(
+            base_cols + [
+                f"{source_col} AS calc_value",
+                f"'{prefix}' AS org_type",
+                f"'{measure_id}' AS measure",
+            ]
+        )
+
+        from_sql = f"`ebmdatalab.measures.{table_name}`"
+
+        parts.append(f"SELECT {select_sql} FROM {from_sql}")
+
+sql = "\nUNION ALL\n".join(parts)
+df = bq.query(sql).result().to_dataframe()
 
 
 # ── Information ─────────────────────────────────────────────────────────────────
