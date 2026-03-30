@@ -18,7 +18,7 @@ import plotly.graph_objects as go
 import pandas as pd
 
 from db import get_duckdb_connection
-from measures import _fetch_measures_df
+from db import _fetch_measures_df
 
 def _credentials():
     return service_account.Credentials.from_service_account_info(st.secrets["gcp_service_account"])
