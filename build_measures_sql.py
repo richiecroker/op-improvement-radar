@@ -3,7 +3,7 @@ from urllib.parse import urlparse
 
 PREFIXES = ["ccg", "pcn", "stp"]
 
-base_cols = ["month", "numerator", "denominator", "percentile"]
+base_cols = ["month", "numerator", "denominator", "calc_value", "percentile"]
 
 org_id_col = {
     "ccg": "pct_id",
