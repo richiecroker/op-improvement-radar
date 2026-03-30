@@ -32,107 +32,13 @@ st.info(
 Please let us know what you think, and what you'd like to see.  Email us at [bennett@phc.ox.ac.uk](mailto:bennett@phc.ox.ac.uk)"""
 )
 
-# Secrets
-# ----------------------------
-github_token = st.secrets.get("github_token")
+conn = get_duckdb_connection()
 
-
-def measure_id_from_github_url(url):
-    if not url:
-        return None
-    try:
-        return os.path.splitext(os.path.basename(urlparse(url).path))[0]
-    except Exception:
-        return None
-
-# Fetch measure definitions from GitHub
-REPO_URL = (
-    "https://api.github.com/repos/"
-    "ebmdatalab/openprescribing/contents/"
-    "openprescribing/measures/definitions"
-)
-headers = {"Authorization": f"token {github_token}"}
-
-res = requests.get(REPO_URL, headers=headers, timeout=15)
-if res.status_code != 200:
-    st.error("Failed to fetch measure definitions")
-    st.stop()
-
-rows = [
-    {
-        "measure_name": data.get("name", measure_id),
-        "measure_id": measure_id,
-    }
-    for item in res.json()
-    if item.get("name", "").endswith(".json")
-    for measure_id in [measure_id_from_github_url(item.get("html_url"))]
-    for data in [requests.get(item["download_url"], timeout=10).json()]
-]
-
-measures_df = pd.DataFrame(rows)
-st.dataframe(measures_df)
-
-
-
-PREFIXES = ["ccg", "pcn", "stp"]
-
-bq = _bq_client()
-existing_tables = {table.table_id for table in bq.list_tables("ebmdatalab.measures")}
-
-base_cols = ["month", "numerator", "denominator", "percentile"]
-
-org_id_col = {
-    "ccg": "pct_id",
-    "pcn": "pcn_id",
-    "stp": "stp_id",
-}
-
-progress = st.progress(0)
-status = st.empty()
-
-parts = []
-tables_total = sum(
-    1
-    for _, row in measures_df.iterrows()
-    if row["measure_id"]
-) * len(PREFIXES)
-
-seen = 0
-
-for _, row in measures_df.iterrows():
-    measure_id = row["measure_id"]
-    if not measure_id:
-        continue
-
-    for prefix in PREFIXES:
-        seen += 1
-        table_name = f"{prefix}_data_{measure_id}"
-
-        status.write(f"Checking {table_name}")
-        progress.progress(min(seen / tables_total, 1.0))
-
-        if table_name not in existing_tables:
-            continue
-
-        source_col = org_id_col[prefix]
-        select_sql = ", ".join([
-            *base_cols,
-            f"{source_col} AS org_id",
-            f"'{prefix}' AS org_type",
-            f"'{measure_id}' AS measure",
-        ])
-
-        parts.append(f"SELECT {select_sql} FROM `ebmdatalab.measures.{table_name}`")
-
-sql = "\nUNION ALL\n".join(parts)
-
-
-df = bq.query(sql).result().to_dataframe()
-
-progress.progress(1.0)
-status.write("Done")
-
-st.dataframe(df.head(5000))
+df = conn.execute("""
+    SELECT *
+    FROM measures
+    WHERE measure = ?
+""", [selected_measure]).df()
 
 
 # ── Information ─────────────────────────────────────────────────────────────────
