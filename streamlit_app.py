@@ -83,9 +83,9 @@ query = "\nUNION ALL\n".join(
 )
 
 bq = _bq_client()
-try:
-    query_job = bq.query(sql)
-    df = query_job.result().to_dataframe()
+
+query_job = bq.query(sql)
+df = query_job.result().to_dataframe()
 
 st.dataframe(df)
 
