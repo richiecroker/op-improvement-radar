@@ -29,6 +29,16 @@ Please let us know what you think, and what you'd like to see.  Email us at [ben
 # ----------------------------
 github_token = st.secrets.get("github_token")
 
+
+def measure_id_from_github_url(url):
+    if not url:
+        return None
+    try:
+        path = urlparse(url).path
+        filename = os.path.basename(path)
+        return os.path.splitext(filename)[0]
+    except Exception:
+        return None
 # ----------------------------
 # Fetch measures from GitHub
 # ----------------------------
