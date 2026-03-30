@@ -8,6 +8,8 @@ from datetime import datetime, date
 from dateutil.relativedelta import relativedelta
 from urllib.parse import urlparse
 
+from db import get_duckdb_connection
+
 from google.cloud import bigquery, storage
 from google.oauth2 import service_account
 
