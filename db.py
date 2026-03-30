@@ -171,11 +171,12 @@ def _save_db_to_gcs(bucket):
 def get_duckdb_connection():
     storage_client = _gcs_client()
     bucket = storage_client.bucket(BUCKET_NAME)
+    blob = bucket.blob(GCS_DB_PATH)
 
     latest_bq = _latest_bq_date()
     logger.info("Latest BQ date: %s", latest_bq)
 
-    # 1) local DB
+    # --- 1) Try local DB ---
     if os.path.exists(LOCAL_DB):
         try:
             conn = duckdb.connect(LOCAL_DB)
@@ -183,26 +184,35 @@ def get_duckdb_connection():
 
             if TARGET_TABLE in tables and _cached_date(conn) == latest_bq:
                 logger.info("Using local DuckDB")
+
+                # ensure GCS copy exists
+                if not blob.exists():
+                    logger.info("GCS DB missing — uploading local DB")
+                    _save_db_to_gcs(bucket)
+
                 return conn
 
             conn.close()
             logger.info("Local DB stale")
+
         except Exception as e:
             logger.warning("Local DB unusable: %s", e)
 
-    # 2) GCS cache
+    # --- 2) Try GCS cache ---
     tmp_path = LOCAL_DB + ".tmp"
 
     try:
         with st.spinner("Downloading cached DB..."):
-            bucket.blob(GCS_DB_PATH).download_to_filename(tmp_path)
+            blob.download_to_filename(tmp_path)
 
         os.replace(tmp_path, LOCAL_DB)
+
         conn = duckdb.connect(LOCAL_DB)
         tables = [r[0] for r in conn.execute("SHOW TABLES").fetchall()]
 
         if TARGET_TABLE in tables and _cached_date(conn) == latest_bq:
             logger.info("Using GCS cached DB")
+
             return conn
 
         conn.close()
@@ -213,7 +223,7 @@ def get_duckdb_connection():
         if os.path.exists(tmp_path):
             os.remove(tmp_path)
 
-    # 3) rebuild
+    # --- 3) Rebuild ---
     if os.path.exists(LOCAL_DB):
         os.remove(LOCAL_DB)
 
@@ -227,6 +237,10 @@ def get_duckdb_connection():
         logger.error("DB not created!")
         return duckdb.connect(LOCAL_DB)
 
+    # always upload after rebuild
+    logger.info("Uploading rebuilt DB to GCS")
     _save_db_to_gcs(bucket)
 
-    return duckdb.connect(LOCAL_DB)
+    # final connection
+    conn = duckdb.connect(LOCAL_DB)
+    return conn
