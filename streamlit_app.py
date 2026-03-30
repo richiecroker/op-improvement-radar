@@ -36,15 +36,59 @@ Please let us know what you think, and what you'd like to see.  Email us at [ben
 
 conn = get_duckdb_connection()
 
-measures = conn.execute(
-    "SELECT DISTINCT measure FROM measures ORDER BY measure"
-).df()["measure"].tolist()
-
-selected_measure = st.selectbox("Select a measure", measures)
+#measures = conn.execute(
+#    "SELECT DISTINCT measure FROM measures ORDER BY measure"
+#).df()["measure"].tolist()#
+#
+#selected_measure = st.selectbox("Select a measure", measures)
 
 df = conn.execute(
-    "SELECT * FROM measures WHERE measure = ?",
-    [selected_measure],
+    """
+        -- All filters chained; swap CTEs in/out to mirror config flags.
+    WITH base AS (
+        SELECT * FROM measures
+        WHERE measure = "aafpercent" AND org_type = "ccg"
+        ORDER BY month
+    ),
+    ranked AS (
+        SELECT *,
+            ROW_NUMBER() OVER (PARTITION BY code ORDER BY month)       AS rn_asc,
+            ROW_NUMBER() OVER (PARTITION BY code ORDER BY month DESC) AS rn_desc
+        FROM base
+    ),
+    agg AS (
+        SELECT
+            code,
+            AVG(numerator)                                                     AS mean_events,
+            AVG(CASE WHEN rn_asc  <= 6 THEN rate       END)               AS start_rate,
+            AVG(CASE WHEN rn_desc <= 6 THEN rate       END)               AS end_rate,
+            AVG(CASE WHEN rn_asc  <= 6 THEN percentile END)               AS start_pct,
+            AVG(CASE WHEN rn_desc <= 6 THEN percentile END)               AS end_pct
+        FROM ranked
+        GROUP BY code
+    ),
+    valid AS (
+        SELECT code,
+            (start_pct - end_pct) AS pct_drop
+        FROM agg
+        WHERE
+            -- apply_mean_events_filter
+            mean_events > $mean_events_threshold
+            -- apply_rate_decrease_filter
+            AND start_rate > 0
+            AND (start_rate - end_rate) / start_rate >= $rate_decrease_percent / 100.0
+            -- apply_zero_filter (end mean != 0 already covered by rate_decrease, but explicit:)
+            AND end_rate > 0
+            -- apply_start_end_percentile_filter
+            AND start_pct > $start_percentile_threshold
+            AND end_pct   < $end_percentile_threshold
+        ORDER BY pct_drop DESC
+        LIMIT $top_x   -- remove LIMIT line if top_x is not configured
+    )
+    SELECT DISTINCT v.code
+    FROM valid v;
+    """
+
 ).df()
 
 st.dataframe(df)
