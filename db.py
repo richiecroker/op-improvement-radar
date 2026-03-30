@@ -1,7 +1,6 @@
 import logging
 import os
 import shutil
-from urllib.parse import urlparse
 
 import duckdb
 import pandas as pd
@@ -11,9 +10,11 @@ import streamlit as st
 from google.cloud import bigquery, storage
 from google.oauth2 import service_account
 
-from build_measures_sql import build_sql
+from build_measures_sql import PREFIXES, build_sql, measure_id_from_github_url
+
 
 logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
 
 # --- Constants ---
 BUCKET_NAME = "ebmdatalab"
@@ -23,23 +24,11 @@ LOCAL_DB = "/tmp/measures.duckdb"
 BQ_DATASET = "ebmdatalab.measures"
 TARGET_TABLE = "measures"
 
-PREFIXES = ["ccg", "pcn", "stp"]
-
-BASE_COLS = ["month", "numerator", "denominator", "percentile"]
-
-ORG_ID_COL = {
-    "ccg": "pct_id",
-    "pcn": "pcn_id",
-    "stp": "stp_id",
-}
-
 REPO_URL = (
     "https://api.github.com/repos/"
     "ebmdatalab/openprescribing/contents/"
     "openprescribing/measures/definitions"
 )
-
-SQL_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "queries")
 
 
 # --- Auth / clients ---
@@ -62,21 +51,8 @@ def _github_headers():
 
 
 # --- Helpers ---
-def measure_id_from_github_url(url):
-    if not url:
-        return None
-    try:
-        return os.path.splitext(os.path.basename(urlparse(url).path))[0]
-    except Exception:
-        return None
-
-
+@st.cache_data(ttl=3600)
 def _fetch_measures_df_from_github() -> pd.DataFrame:
-    """
-    Fetch measure definitions from GitHub and return a dataframe with:
-    - measure_name
-    - measure_id
-    """
     res = requests.get(REPO_URL, headers=_github_headers(), timeout=15)
     res.raise_for_status()
 
@@ -94,24 +70,49 @@ def _fetch_measures_df_from_github() -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def _latest_bq_date() -> str | None:
- 
+def _normalise_df(df: pd.DataFrame) -> pd.DataFrame:
+    for col in df.columns:
+        if hasattr(df[col].dtype, "name") and "date" in str(df[col].dtype).lower():
+            df[col] = pd.to_datetime(df[col]).dt.date
+    return df
+
+
+def _first_source_table(measures_df: pd.DataFrame, existing_tables: set[str]) -> str | None:
+    for _, row in measures_df.iterrows():
+        measure_id = row["measure_id"]
+        if not measure_id:
+            continue
+
+        for prefix in PREFIXES:
+            table_name = f"{prefix}_data_{measure_id}"
+            if table_name in existing_tables:
+                return table_name
+
+    return None
+
+
+def _latest_bq_month() -> str | None:
     bq = _bq_client()
+    measures_df = _fetch_measures_df_from_github()
+    existing_tables = {t.table_id for t in bq.list_tables(BQ_DATASET)}
+
+    source_table = _first_source_table(measures_df, existing_tables)
+    if not source_table:
+        logger.warning("No source table found in BigQuery to check freshness.")
+        return None
+
     try:
         result = bq.query(
-            f"""
-            SELECT DATE(MAX(month))
-            FROM `{BQ_DATASET}.ccg_data_lpzomnibus`
-            """
+            f"SELECT DATE(MAX(month)) FROM `{BQ_DATASET}.{source_table}`"
         ).result()
         row = list(result)[0]
         return str(row[0]) if row[0] else None
     except Exception as e:
-        logger.error("Failed to get latest BQ date: %s", e)
+        logger.error("Failed to get latest month from %s: %s", source_table, e)
         return None
 
 
-def _cached_date(conn) -> str | None:
+def _cached_month(conn) -> str | None:
     try:
         result = conn.execute(
             f"SELECT MAX(CAST(month AS DATE)) FROM {TARGET_TABLE}"
@@ -121,21 +122,11 @@ def _cached_date(conn) -> str | None:
         return None
 
 
-def _normalise_df(df: pd.DataFrame) -> pd.DataFrame:
-    for col in df.columns:
-        if "date" in str(df[col].dtype).lower():
-            df[col] = pd.to_datetime(df[col]).dt.date
-    return df
-
-
 def _rebuild_measures_table(conn):
     bq = _bq_client()
 
     measures_df = _fetch_measures_df_from_github()
-
-    existing_tables = {
-        table.table_id for table in bq.list_tables(BQ_DATASET)
-    }
+    existing_tables = {table.table_id for table in bq.list_tables(BQ_DATASET)}
 
     sql = build_sql(measures_df, existing_tables)
 
@@ -158,9 +149,30 @@ def _save_db_to_gcs(bucket):
     shutil.copy2(LOCAL_DB, tmp)
 
     try:
-        bucket.blob(GCS_DB_PATH).upload_from_filename(tmp)
-    except Exception as e:
-        logger.warning("Failed to upload DB to GCS: %s", e)
+        blob = bucket.blob(GCS_DB_PATH)
+        logger.info("Uploading %s to gs://%s/%s", tmp, BUCKET_NAME, GCS_DB_PATH)
+
+        blob.upload_from_filename(tmp)
+        blob.reload()
+
+        logger.info(
+            "Upload complete: exists=%s size=%s updated=%s",
+            blob.exists(),
+            blob.size,
+            blob.updated,
+        )
+
+        if not blob.exists():
+            raise RuntimeError(
+                f"Upload reported success but blob is missing: gs://{BUCKET_NAME}/{GCS_DB_PATH}"
+            )
+
+        for b in bucket.list_blobs(prefix="measures_app/"):
+            logger.info("GCS blob present: %s", b.name)
+
+    except Exception:
+        logger.exception("Failed to upload DB to GCS")
+        raise
     finally:
         if os.path.exists(tmp):
             os.remove(tmp)
@@ -173,8 +185,8 @@ def get_duckdb_connection():
     bucket = storage_client.bucket(BUCKET_NAME)
     blob = bucket.blob(GCS_DB_PATH)
 
-    latest_bq = _latest_bq_date()
-    logger.info("Latest BQ date: %s", latest_bq)
+    latest_bq = _latest_bq_month()
+    logger.info("Latest BQ month: %s", latest_bq)
 
     # --- 1) Try local DB ---
     if os.path.exists(LOCAL_DB):
@@ -182,10 +194,9 @@ def get_duckdb_connection():
             conn = duckdb.connect(LOCAL_DB)
             tables = [r[0] for r in conn.execute("SHOW TABLES").fetchall()]
 
-            if TARGET_TABLE in tables and _cached_date(conn) == latest_bq:
+            if TARGET_TABLE in tables and _cached_month(conn) == latest_bq:
                 logger.info("Using local DuckDB")
 
-                # ensure GCS copy exists
                 if not blob.exists():
                     logger.info("GCS DB missing — uploading local DB")
                     _save_db_to_gcs(bucket)
@@ -210,9 +221,8 @@ def get_duckdb_connection():
         conn = duckdb.connect(LOCAL_DB)
         tables = [r[0] for r in conn.execute("SHOW TABLES").fetchall()]
 
-        if TARGET_TABLE in tables and _cached_date(conn) == latest_bq:
+        if TARGET_TABLE in tables and _cached_month(conn) == latest_bq:
             logger.info("Using GCS cached DB")
-
             return conn
 
         conn.close()
@@ -233,14 +243,16 @@ def get_duckdb_connection():
         conn.checkpoint()
         conn.close()
 
+    logger.info(
+        "Rebuild finished, local DB exists=%s size=%s",
+        os.path.exists(LOCAL_DB),
+        os.path.getsize(LOCAL_DB) if os.path.exists(LOCAL_DB) else None,
+    )
+
     if not os.path.exists(LOCAL_DB):
         logger.error("DB not created!")
         return duckdb.connect(LOCAL_DB)
 
-    # always upload after rebuild
-    logger.info("Uploading rebuilt DB to GCS")
     _save_db_to_gcs(bucket)
 
-    # final connection
-    conn = duckdb.connect(LOCAL_DB)
-    return conn
+    return duckdb.connect(LOCAL_DB)
