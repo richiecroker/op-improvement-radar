@@ -85,7 +85,6 @@ id = {
     "ccg": "pct_id",
     "pcn": "pcn_id",
     "stp": "stp_id",
-    # tweak if any differ
 }
 
 parts = []
@@ -100,7 +99,7 @@ for _, row in measures_df.iterrows():
         if table_name not in existing_tables:
             continue
 
-        source_col = calc_value_source[prefix]
+        source_col = id[prefix]
 
         select_sql = ", ".join(
             base_cols + [
