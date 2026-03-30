@@ -74,7 +74,7 @@ st.dataframe(df)
 
 PREFIXES = ["ccg", "pcn", "icb"]
 
-query = "\nUNION ALL\n".join(
+sql = "\nUNION ALL\n".join(
     f"SELECT *, '{prefix}' AS org_type, '{row['measure_id']}' AS measure_id "
     f"FROM `my-project.my_dataset.{prefix}_{row['measure_id']}_data`"
     for _, row in df.iterrows()
