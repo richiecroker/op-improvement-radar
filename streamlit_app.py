@@ -54,23 +54,23 @@ df = conn.execute(
     ),
     ranked AS (
         SELECT *,
-            ROW_NUMBER() OVER (PARTITION BY code ORDER BY month)       AS rn_asc,
-            ROW_NUMBER() OVER (PARTITION BY code ORDER BY month DESC)  AS rn_desc
+            ROW_NUMBER() OVER (PARTITION BY org_id ORDER BY month)       AS rn_asc,
+            ROW_NUMBER() OVER (PARTITION BY org_id ORDER BY month DESC)  AS rn_desc
         FROM base
     ),
     agg AS (
         SELECT
-            code,
+            org_id,
             AVG(numerator)                                             AS mean_events,
             AVG(CASE WHEN rn_asc  <= 6 THEN rate       END)           AS start_rate,
             AVG(CASE WHEN rn_desc <= 6 THEN rate       END)           AS end_rate,
             AVG(CASE WHEN rn_asc  <= 6 THEN percentile END)           AS start_pct,
             AVG(CASE WHEN rn_desc <= 6 THEN percentile END)           AS end_pct
         FROM ranked
-        GROUP BY code
+        GROUP BY org_id
     ),
     valid AS (
-        SELECT code,
+        SELECT org_id,
             (start_pct - end_pct) AS pct_drop
         FROM agg
         WHERE
@@ -83,11 +83,13 @@ df = conn.execute(
         ORDER BY pct_drop DESC
         LIMIT ?
     )
-    SELECT DISTINCT v.code
+    SELECT DISTINCT v.org_id
     FROM valid v;
     """,
     [20, 10, 0.8, 0.4, 10]
 ).df()
+
+st.dataframe(df)
 
 st.dataframe(df)
 
