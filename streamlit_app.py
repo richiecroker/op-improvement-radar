@@ -88,10 +88,8 @@ for item in res.json():
         "measure_name": data.get("name", measure_id),
         "measure_id": measure_id,
         "github_url": github_url,
-        "authored_by": email_to_name(authored_by),
-        "checked_by": email_to_name(checked_by),
         "next_review": next_review,
-        "next_review_months": review_months(next_review),
+
     })
 
 df = pd.DataFrame(rows)
