@@ -67,28 +67,10 @@ for item in res.json():
     except Exception:
         continue
 
-    authored_by = data.get("authored_by", "")
-    if isinstance(authored_by, list):
-        authored_by = authored_by[0] if authored_by else ""
-
-    checked_by = data.get("checked_by", "")
-    if isinstance(checked_by, list):
-        checked_by = checked_by[0] if checked_by else ""
-
-    next_review = data.get("next_review")
-    if isinstance(next_review, list):
-        next_review = next_review[0]
-    if isinstance(next_review, str):
-        try:
-            next_review = datetime.strptime(next_review, "%Y-%m-%d").date()
-        except Exception:
-            next_review = None
 
     rows.append({
         "measure_name": data.get("name", measure_id),
         "measure_id": measure_id,
-        "github_url": github_url,
-        "next_review": next_review,
 
     })
 
