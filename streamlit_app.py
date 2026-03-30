@@ -98,6 +98,7 @@ df = bq.query(sql).result().to_dataframe()
 st.dataframe(df)
 
 
+
 # ── Information ─────────────────────────────────────────────────────────────────
 
 st.divider()
