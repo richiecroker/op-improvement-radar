@@ -73,26 +73,27 @@ measures_df = pd.DataFrame(rows)
 st.dataframe(measures_df)
 
 
+
 PREFIXES = ["ccg", "pcn", "stp"]
 
 bq = _bq_client()
 
-existing_tables = {table.table_id for table in bq.list_tables(f"ebmdatalab.measures")}
+schemas = {
+    table.table_id: {f.name for f in bq.get_table(f"{PROJECT}.{DATASET}.{table.table_id}").schema}
+    for table in bq.list_tables(f"{PROJECT}.{DATASET}")
+}
+
+common_cols = set.intersection(*schemas.values()) - {"regional_team_id"}
+col_list = ", ".join(sorted(common_cols))
 
 sql = "\nUNION ALL\n".join(
-    f"SELECT * EXCEPT(stp_id, regional_team_id), '{prefix}' AS org_type, '{row['measure_id']}' AS measure "
-    f"FROM `ebmdatalab.measures.{prefix}_data_{row['measure_id']}`"
-    if prefix == "ccg" else
-    f"SELECT *, '{prefix}' AS org_type, '{row['measure_id']}' AS measure "
-    f"FROM `ebmdatalab.measures.{prefix}_data_{row['measure_id']}`"
+    f"SELECT {col_list}, '{prefix}' AS org_type, '{row['measure_id']}' AS measure "
+    f"FROM `{PROJECT}.{DATASET}.{prefix}_data_{row['measure_id']}`"
     for _, row in measures_df.iterrows()
     if row["measure_id"]
     for prefix in PREFIXES
     if f"{prefix}_data_{row['measure_id']}" in existing_tables
 )
-
-df = bq.query(sql).result().to_dataframe()
-
 
 
 # ── Information ─────────────────────────────────────────────────────────────────
