@@ -81,7 +81,7 @@ existing_tables = {table.table_id for table in bq.list_tables("ebmdatalab.measur
 
 base_cols = ["month", "numerator", "denominator", "percentile"]
 
-id = {
+org_id_col = {
     "ccg": "pct_id",
     "pcn": "pcn_id",
     "stp": "stp_id",
@@ -99,21 +99,21 @@ for _, row in measures_df.iterrows():
         if table_name not in existing_tables:
             continue
 
-        source_col = id[prefix]
+        source_col = org_id_col[prefix]
 
         select_sql = ", ".join(
             base_cols + [
-                f"{id} AS org_id",
+                f"{source_col} AS org_id",
                 f"'{prefix}' AS org_type",
                 f"'{measure_id}' AS measure",
             ]
         )
 
         from_sql = f"`ebmdatalab.measures.{table_name}`"
-
         parts.append(f"SELECT {select_sql} FROM {from_sql}")
 
 sql = "\nUNION ALL\n".join(parts)
+
 df = bq.query(sql).result().to_dataframe()
 
 
