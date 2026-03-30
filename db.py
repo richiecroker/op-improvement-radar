@@ -62,7 +62,7 @@ def _normalise_df(df: pd.DataFrame) -> pd.DataFrame:
 
 def _latest_bq_month():
     row = _bq_client().query(
-        "SELECT DATE(MAX(month)) FROM `ebmdatalab.measures.ccg_data_ace`"
+        "SELECT DATE(MAX(month)) FROM `ebmdatalab.measures.ccg_data_saba`"
     ).result()[0]
     return str(row[0])
 
