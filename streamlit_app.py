@@ -34,48 +34,35 @@ def measure_id_from_github_url(url):
     if not url:
         return None
     try:
-        path = urlparse(url).path
-        filename = os.path.basename(path)
-        return os.path.splitext(filename)[0]
+        return os.path.splitext(os.path.basename(urlparse(url).path))[0]
     except Exception:
         return None
-# ----------------------------
-# Fetch measures from GitHub
-# ----------------------------
-headers = {"Authorization": f"token {github_token}"}
-repo_url = (
+
+# Fetch measure definitions from GitHub
+REPO_URL = (
     "https://api.github.com/repos/"
     "ebmdatalab/openprescribing/contents/"
     "openprescribing/measures/definitions"
 )
+headers = {"Authorization": f"token {github_token}"}
 
-res = requests.get(repo_url, headers=headers, timeout=15)
+res = requests.get(REPO_URL, headers=headers, timeout=15)
 if res.status_code != 200:
     st.error("Failed to fetch measure definitions")
     st.stop()
 
-rows = []
-for item in res.json():
-    if not item.get("name", "").endswith(".json"):
-        continue
-
-    github_url = item.get("html_url")
-    measure_id = measure_id_from_github_url(github_url)
-
-    try:
-        data = requests.get(item["download_url"], timeout=10).json()
-    except Exception:
-        continue
-
-
-    rows.append({
+rows = [
+    {
         "measure_name": data.get("name", measure_id),
         "measure_id": measure_id,
-
-    })
+    }
+    for item in res.json()
+    if item.get("name", "").endswith(".json")
+    for measure_id in [measure_id_from_github_url(item.get("html_url"))]
+    for data in [requests.get(item["download_url"], timeout=10).json()]
+]
 
 df = pd.DataFrame(rows)
-
 st.dataframe(df)
 
 
