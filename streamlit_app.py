@@ -82,6 +82,8 @@ sql = "\nUNION ALL\n".join(
     for prefix in PREFIXES
 )
 
+st.code(sql, language="sql")
+
 bq = _bq_client()
 df = bq.query(sql).result().to_dataframe()
 st.dataframe(df)
