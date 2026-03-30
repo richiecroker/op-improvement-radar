@@ -100,7 +100,7 @@ def _rebuild(conn):
         SELECT 'pcn' AS org_type, code, name FROM `ebmdatalab.hscic.pcns`
         UNION ALL
         SELECT 'ccg', code, name FROM `ebmdatalab.hscic.ccgs`
-        WHERE close_date IS NOT NULL AND org_type = 'CCG'
+        WHERE close_date IS NULL AND org_type = 'CCG'
         UNION ALL
         SELECT 'stp', code, name FROM `ebmdatalab.hscic.stps`
     """
