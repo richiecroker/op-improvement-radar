@@ -74,12 +74,19 @@ st.dataframe(measures_df)
 
 PREFIXES = ["ccg", "pcn", "stp"]
 
+sample_table = bq.get_table(f"{PROJECT}.{DATASET}.ccg_data_lpzomnibus")
+col_list = ", ".join(
+    f.name for f in sample_table.schema
+    if f.name not in {"stp_id", "regional_team_id"}
+)
+
 sql = "\nUNION ALL\n".join(
-    f"SELECT *, '{prefix}' AS org_type, '{row['measure_id']}' AS measure "
-    f"FROM `ebmdatalab.measures.{prefix}_data_{row['measure_id']}`"
+    f"SELECT {col_list}, '{prefix}' AS org_type, '{row['measure_id']}' AS measure "
+    f"FROM `{PROJECT}.{DATASET}.{prefix}_data_{row['measure_id']}`"
     for _, row in measures_df.iterrows()
     if row["measure_id"]
     for prefix in PREFIXES
+    if f"{prefix}_data_{row['measure_id']}" in existing_tables
 )
 
 st.code(sql, language="sql")
