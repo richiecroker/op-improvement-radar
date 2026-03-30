@@ -114,7 +114,12 @@ for _, row in measures_df.iterrows():
 
 sql = "\nUNION ALL\n".join(parts)
 
-df = bq.query(sql).result().to_dataframe()
+st.write(f"Querying {len(parts)} tables...")
+
+with st.spinner("Running BigQuery job..."):
+    df = bq.query(sql).result().to_dataframe()
+
+st.success("Done")
 
 
 # ── Information ─────────────────────────────────────────────────────────────────
