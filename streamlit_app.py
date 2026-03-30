@@ -87,7 +87,7 @@ df = conn.execute(
     )
     SELECT DISTINCT v.code
     FROM valid v;
-    """
+    """,
     {
         "mean_events_threshold": 20,
         "rate_decrease_percent": 10,
