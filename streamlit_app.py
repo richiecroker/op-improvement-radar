@@ -126,9 +126,8 @@ for _, row in measures_df.iterrows():
 
 sql = "\nUNION ALL\n".join(parts)
 
-status.write(f"Running BigQuery over {len(parts)} tables...")
-with st.spinner("Querying BigQuery..."):
-    df = bq.query(sql).result().to_dataframe()
+
+df = bq.query(sql).result().to_dataframe()
 
 progress.progress(1.0)
 status.write("Done")
@@ -140,9 +139,9 @@ st.dataframe(df.head(5000))
 
 st.divider()
 
-#with st.expander("Click here to read our methodology", icon=":material/quick_reference:"):
-#    with open(os.path.join(base_dir, "content", "methodology.md")) as f:
-#        st.markdown(f.read())
+with st.expander("Click here to read our methodology", icon=":material/quick_reference:"):
+    with open(os.path.join(base_dir, "content", "methodology.md")) as f:
+        st.markdown(f.read())
 
 #with open(os.path.join(base_dir, "content", "changelog.yaml")) as f:
 #    changelog = yaml.safe_load(f)
