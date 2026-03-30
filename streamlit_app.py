@@ -81,10 +81,10 @@ existing_tables = {table.table_id for table in bq.list_tables("ebmdatalab.measur
 
 base_cols = ["month", "numerator", "denominator", "percentile"]
 
-calc_value_source = {
-    "ccg": "calc_value",
-    "pcn": "calc_value",
-    "stp": "calc_value",
+id = {
+    "ccg": "pct_id",
+    "pcn": "pcn_id",
+    "stp": "stp_id",
     # tweak if any differ
 }
 
@@ -104,7 +104,7 @@ for _, row in measures_df.iterrows():
 
         select_sql = ", ".join(
             base_cols + [
-                f"{source_col} AS calc_value",
+                f"{id} AS org_id",
                 f"'{prefix}' AS org_type",
                 f"'{measure_id}' AS measure",
             ]
