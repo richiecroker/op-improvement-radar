@@ -76,7 +76,7 @@ PREFIXES = ["ccg", "pcn", "stp"]
 
 sql = "\nUNION ALL\n".join(
     f"SELECT *, '{prefix}' AS org_type, '{row['measure_id']}' AS measure "
-    f"FROM `ebmdatalab.measures.{prefix}_{row['measure_id']}_data`"
+    f"FROM `ebmdatalab.measures.{prefix}_data_{row['measure_id']}`"
     for _, row in measures_df.iterrows()
     if row["measure_id"]
     for prefix in PREFIXES
