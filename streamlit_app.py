@@ -61,9 +61,9 @@ df = conn.execute(
     agg AS (
         SELECT
             org_id,
-            AVG(numerator)                                             AS mean_events,
-            AVG(CASE WHEN rn_asc  <= 6 THEN rate       END)           AS start_rate,
-            AVG(CASE WHEN rn_desc <= 6 THEN rate       END)           AS end_rate,
+            AVG(numerator)                                            AS mean_events,
+            AVG(CASE WHEN rn_asc  <= 6 THEN cal_value  END)           AS start_rate,
+            AVG(CASE WHEN rn_desc <= 6 THEN cal_value  END)           AS end_rate,
             AVG(CASE WHEN rn_asc  <= 6 THEN percentile END)           AS start_pct,
             AVG(CASE WHEN rn_desc <= 6 THEN percentile END)           AS end_pct
         FROM ranked
