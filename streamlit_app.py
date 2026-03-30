@@ -14,7 +14,7 @@ from google.oauth2 import service_account
 def _credentials():
     return service_account.Credentials.from_service_account_info(st.secrets["gcp_service_account"])
 
-    def _bq_client():
+def _bq_client():
     return bigquery.Client(credentials=_credentials(), project="ebmdatalab")
 
 
