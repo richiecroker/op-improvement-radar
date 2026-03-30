@@ -78,15 +78,6 @@ def _normalise_df(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _rebuild_measures_table(conn):
-
-    sql = build_sql(measures_df, existing_tables)
-
-    logger.info("Generated SQL length: %s", len(sql))
-    logger.info("First 2000 chars of SQL:\n%s", sql[:2000])
-
-    if not sql.strip():
-        raise ValueError("No SQL generated for measures rebuild")
-    
     bq = _bq_client()
 
     # get measures list
@@ -101,6 +92,9 @@ def _rebuild_measures_table(conn):
 
     # build SQL dynamically
     sql = build_sql(measures_df, existing_tables)
+
+    logger.info("Generated SQL length: %s", len(sql))
+    logger.info("First 2000 chars of SQL:\n%s", sql[:2000])
 
     if not sql.strip():
         raise ValueError("No SQL generated for measures rebuild")
