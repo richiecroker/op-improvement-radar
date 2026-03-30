@@ -35,9 +35,9 @@ st.set_page_config(layout="wide")
 
 # --- Header ---
 base_dir = os.path.dirname(__file__)
-#st.image(os.path.join(base_dir, "content", "OpenPrescribing.svg"))
+st.image(os.path.join(base_dir, "content", "OpenPrescribing.svg"))
 st.info(
-    """##### Hello!  This is a **very** early prototype of something.  
+    """##### Hello!  This is a **very** early prototype of an enhanced version of the Improvement Radar.  
 Please let us know what you think, and what you'd like to see.  Email us at [bennett@phc.ox.ac.uk](mailto:bennett@phc.ox.ac.uk)"""
 )
 
@@ -53,7 +53,12 @@ measure_options = dict(zip(measures_df["name"], measures_df["measure_id"]))
 selected_name = st.selectbox("Select a measure", sorted(measure_options.keys()))
 selected_measure = measure_options[selected_name]
 
-org_type = st.selectbox("Select organisation type", ["ccg", "pcn", "stp"])
+with st.sidebar:
+    org_type = st.selectbox(
+        "Select organisation type",
+        options=["ccg", "pcn", "stp"],
+        format_func=lambda x: {"ccg": "Sub-ICB Location (SICBL)", "pcn": "Primary Care Network (PCN)", "stp": "Integrated Care Board"}[x]
+    )   
 
 # --- Lookup measure metadata ---
 row = measures_df[measures_df["measure_id"] == selected_measure].iloc[0]
@@ -133,7 +138,6 @@ data = conn.execute(
     [selected_measure, org_type]
 ).df()
 
-st.write(conn.execute("SELECT * FROM orgs LIMIT 10").df())
 
 # --- Plot ---
 if len(filtered_orgs) == 0:
@@ -153,11 +157,10 @@ else:
             mode="lines",
             line=dict(
                 color="blue",
-                width=2 if is_median else 1,
+                width=2 if is_median else 1.5,
                 dash="solid" if is_median else "dot"
             ),
             name="Median" if is_median else col,
-            showlegend=is_median,
             opacity=0.6 if is_median else 0.3
         ))
 
