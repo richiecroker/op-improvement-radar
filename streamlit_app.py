@@ -133,6 +133,8 @@ data = conn.execute(
     [selected_measure, org_type]
 ).df()
 
+st.write(conn.execute("SELECT * FROM orgs LIMIT 10").df())
+
 # --- Plot ---
 if len(filtered_orgs) == 0:
     st.info("No organisations met the criteria for detecting substantial improvement on this measure.")
