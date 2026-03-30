@@ -154,6 +154,7 @@ else:
         fig.add_trace(go.Scatter(
             x=deciles["month"],
             y=deciles[col],
+            showlegend=False,
             mode="lines",
             line=dict(
                 color="blue",
