@@ -66,7 +66,7 @@ is_percentage = row["is_percentage"]
 y_label = row["y_label"] if row["y_label"] else "Rate"
 
 # --- Filter orgs ---
-filtered_orgs = conn.execute(
+filtered_orgs_df = conn.execute(
     """
     WITH base AS (
         SELECT * FROM measures
@@ -86,13 +86,17 @@ filtered_orgs = conn.execute(
             AVG(CASE WHEN rn_asc  <= 6 THEN calc_value END)        AS start_rate,
             AVG(CASE WHEN rn_desc <= 6 THEN calc_value END)        AS end_rate,
             AVG(CASE WHEN rn_asc  <= 6 THEN percentile END)        AS start_pct,
-            AVG(CASE WHEN rn_desc <= 6 THEN percentile END)        AS end_pct
+            AVG(CASE WHEN rn_desc <= 6 THEN percentile END)        AS end_pct,
+            MAX(CASE WHEN rn_asc  = 6  THEN month END)             AS start_month,
+            MAX(CASE WHEN rn_desc = 6  THEN month END)             AS end_month
         FROM ranked
         GROUP BY org_id
     ),
     valid AS (
         SELECT org_id,
-            (start_pct - end_pct) AS pct_drop
+            (start_pct - end_pct) AS pct_drop,
+            start_month,
+            end_month
         FROM agg
         WHERE
             mean_events > ?
@@ -104,11 +108,13 @@ filtered_orgs = conn.execute(
         ORDER BY pct_drop DESC
         LIMIT ?
     )
-    SELECT DISTINCT v.org_id
+    SELECT DISTINCT v.org_id, v.start_month, v.end_month
     FROM valid v
     """,
     [selected_measure, org_type, 20, 10, 0.8, 0.4, 5]
-).df()["org_id"].tolist()
+).df()
+
+filtered_orgs = filtered_orgs_df["org_id"].tolist()
 
 # --- Deciles ---
 deciles = conn.execute(
@@ -197,17 +203,18 @@ else:
 
     # Org table
     st.subheader("Identified organisations")
-    org_names = []
-    for org_id in filtered_orgs:
+    table_rows = []
+    for _, row in filtered_orgs_df.iterrows():
         org_name = conn.execute(
             "SELECT name FROM orgs WHERE org_type = ? AND code = ?",
-            [org_type, org_id]
+            [org_type, row["org_id"]]
         ).fetchone()
-        org_names.append({
-            "Code": org_id,
-            "Name": org_name[0] if org_name else org_id
+        table_rows.append({
+            "Name": org_name[0] if org_name else row["org_id"],
+            "Start month": row["start_month"].strftime("%b %Y") if pd.notna(row["start_month"]) else "",
+            "End month": row["end_month"].strftime("%b %Y") if pd.notna(row["end_month"]) else "",
         })
-    st.dataframe(pd.DataFrame(org_names), use_container_width=True)
+    st.dataframe(pd.DataFrame(table_rows), use_container_width=True, hide_index=True)
 
 
 
