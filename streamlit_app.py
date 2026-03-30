@@ -224,10 +224,10 @@ with st.expander("Click here to read our methodology", icon=":material/quick_ref
     with open(os.path.join(base_dir, "content", "methodology.md")) as f:
         st.markdown(f.read())
 
-#with open(os.path.join(base_dir, "content", "changelog.yaml")) as f:
-#    changelog = yaml.safe_load(f)
+with open(os.path.join(base_dir, "content", "changelog.yaml")) as f:
+    changelog = yaml.safe_load(f)
 
-#with st.expander("Click to see changelog", icon=":material/history:"):
- #   for entry in reversed(changelog):
- #       st.markdown(f"**{entry['date']}** — {entry['change']} *({entry['person']})*")
+with st.expander("Click to see changelog", icon=":material/history:"):
+    for entry in reversed(changelog):
+        st.markdown(f"**{entry['date']}** — {entry['change']} *({entry['person']})*")
 
