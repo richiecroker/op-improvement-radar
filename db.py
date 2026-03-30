@@ -95,6 +95,21 @@ def _rebuild(conn):
     conn.execute(f"CREATE TABLE {TARGET_TABLE} AS SELECT * FROM _tmp")
     conn.unregister("_tmp")
 
+    # Build orgs table
+    orgs_sql = """
+        SELECT 'pcn' AS org_type, code, name FROM `ebmdatalab.hscic.pcns`
+        UNION ALL
+        SELECT 'ccg', code, name FROM `ebmdatalab.hscic.ccgs`
+        WHERE close_date IS NOT NULL AND org_type = 'CCG'
+        UNION ALL
+        SELECT 'stp', code, name FROM `ebmdatalab.hscic.stps`
+    """
+    orgs_df = bq.query(orgs_sql).result().to_dataframe()
+    conn.execute("DROP TABLE IF EXISTS orgs")
+    conn.register("_tmp_orgs", orgs_df)
+    conn.execute("CREATE TABLE orgs AS SELECT * FROM _tmp_orgs")
+    conn.unregister("_tmp_orgs")
+
 
 def _save_to_gcs(bucket):
     tmp = LOCAL_DB + ".upload.tmp"
