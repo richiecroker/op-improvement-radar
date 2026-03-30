@@ -44,13 +44,20 @@ def _fetch_measures_df() -> pd.DataFrame:
     res = requests.get(REPO_URL, headers=_github_headers(), timeout=15)
     res.raise_for_status()
     rows = [
-        {"measure_name": data.get("name", measure_id), "measure_id": measure_id}
+        {
+            "measure_id": measure_id,
+            "name": data.get("name", measure_id),
+            "is_percentage": data.get("is_percentage", False),
+            "y_label": data.get("y_label", ""),
+            "radar_exclude": data.get("radar_exclude", False),
+        }
         for item in res.json()
         if item.get("name", "").endswith(".json")
         for measure_id in [measure_id_from_github_url(item.get("html_url"))]
         for data in [requests.get(item["download_url"], timeout=10).json()]
     ]
-    return pd.DataFrame(rows)
+    df = pd.DataFrame(rows)
+    return df[df["radar_exclude"] == False]  # filter out excluded measures
 
 
 def _normalise_df(df: pd.DataFrame) -> pd.DataFrame:
