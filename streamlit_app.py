@@ -133,6 +133,8 @@ with st.spinner("Querying BigQuery..."):
 progress.progress(1.0)
 status.write("Done")
 
+st.dataframe(df)
+
 
 # ── Information ─────────────────────────────────────────────────────────────────
 
