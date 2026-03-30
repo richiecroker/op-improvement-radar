@@ -43,6 +43,7 @@ conn = get_duckdb_connection()
 #selected_measure = st.selectbox("Select a measure", measures)
 
 conn = get_duckdb_connection()
+st.write(conn.execute("SELECT * FROM measures LIMIT 5").df())
 
 df = conn.execute(
     """
