@@ -47,7 +47,7 @@ df = conn.execute(
         -- All filters chained; swap CTEs in/out to mirror config flags.
     WITH base AS (
         SELECT * FROM measures
-        WHERE measure = "aafpercent" AND org_type = "ccg"
+        WHERE measure = 'aafpercent' AND org_type = 'ccg'
         ORDER BY month
     ),
     ranked AS (
@@ -88,7 +88,13 @@ df = conn.execute(
     SELECT DISTINCT v.code
     FROM valid v;
     """
-
+    {
+        "mean_events_threshold": 20,
+        "rate_decrease_percent": 10,
+        "start_percentile_threshold": 0.8,
+        "end_percentile_threshold": 0.4,
+        "top_x": 10,
+    }
 ).df()
 
 st.dataframe(df)
