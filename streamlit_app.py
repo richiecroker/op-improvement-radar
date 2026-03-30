@@ -17,7 +17,7 @@ import streamlit as st
 import plotly.graph_objects as go
 import pandas as pd
 
-from database import get_duckdb_connection
+from db import get_duckdb_connection
 from measures import _fetch_measures_df
 
 def _credentials():
