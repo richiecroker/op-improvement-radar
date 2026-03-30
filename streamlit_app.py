@@ -72,11 +72,11 @@ rows = [
 measures_df = pd.DataFrame(rows)
 st.dataframe(measures_df)
 
-PREFIXES = ["ccg", "pcn", "icb"]
+PREFIXES = ["ccg", "pcn", "stp"]
 
 sql = "\nUNION ALL\n".join(
     f"SELECT *, '{prefix}' AS org_type, '{row['measure_id']}' AS measure "
-    f"FROM `my-project.my_dataset.{prefix}_{row['measure_id']}_data`"
+    f"FROM `ebmdatalab.measures.{prefix}_{row['measure_id']}_data`"
     for _, row in measures_df.iterrows()
     if row["measure_id"]
     for prefix in PREFIXES
