@@ -69,24 +69,21 @@ rows = [
     for data in [requests.get(item["download_url"], timeout=10).json()]
 ]
 
-df = pd.DataFrame(rows)
-st.dataframe(df)
+measures_df = pd.DataFrame(rows)
+st.dataframe(measures_df)
 
 PREFIXES = ["ccg", "pcn", "icb"]
 
 sql = "\nUNION ALL\n".join(
-    f"SELECT *, '{prefix}' AS org_type, '{row['measure_id']}' AS measure_id "
+    f"SELECT *, '{prefix}' AS org_type, '{row['measure_id']}' AS measure "
     f"FROM `my-project.my_dataset.{prefix}_{row['measure_id']}_data`"
-    for _, row in df.iterrows()
+    for _, row in measures_df.iterrows()
     if row["measure_id"]
     for prefix in PREFIXES
 )
 
 bq = _bq_client()
-
-query_job = bq.query(sql)
-df = query_job.result().to_dataframe()
-
+df = bq.query(sql).result().to_dataframe()
 st.dataframe(df)
 
 
