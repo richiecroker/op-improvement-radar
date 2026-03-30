@@ -36,11 +36,18 @@ Please let us know what you think, and what you'd like to see.  Email us at [ben
 
 conn = get_duckdb_connection()
 
-df = conn.execute("""
-    SELECT *
-    FROM measures
-    WHERE measure = ?
-""", [selected_measure]).df()
+measures = conn.execute(
+    "SELECT DISTINCT measure FROM measures ORDER BY measure"
+).df()["measure"].tolist()
+
+selected_measure = st.selectbox("Select a measure", measures)
+
+df = conn.execute(
+    "SELECT * FROM measures WHERE measure = ?",
+    [selected_measure],
+).df()
+
+st.dataframe(df)
 
 
 # ── Information ─────────────────────────────────────────────────────────────────
