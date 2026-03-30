@@ -74,14 +74,13 @@ st.dataframe(measures_df)
 
 
 PREFIXES = ["ccg", "pcn", "stp"]
-PROJECT = ["ebmdatalab"]
-DATASET = ["measures"]
+
 bq = _bq_client()
 
-existing_tables = {table.table_id for table in bq.list_tables(f"{PROJECT}.{DATASET}")}
+existing_tables = {table.table_id for table in bq.list_tables(f"ebmdatalab.measures")}
 
 sample_table_id = next(t for t in existing_tables if t.startswith("ccg_data_"))
-sample_table = bq.get_table(f"{PROJECT}.{DATASET}.{sample_table_id}")
+sample_table = bq.get_table(f"ebmdatalab.measures.{sample_table_id}")
 col_list = ", ".join(
     f.name for f in sample_table.schema
     if f.name not in {"stp_id", "regional_team_id"}
@@ -89,7 +88,7 @@ col_list = ", ".join(
 
 sql = "\nUNION ALL\n".join(
     f"SELECT {col_list}, '{prefix}' AS org_type, '{row['measure_id']}' AS measure "
-    f"FROM `{PROJECT}.{DATASET}.{prefix}_data_{row['measure_id']}`"
+    f"FROM `ebmdatalab.measures.{prefix}_data_{row['measure_id']}`"
     for _, row in measures_df.iterrows()
     if row["measure_id"]
     for prefix in PREFIXES
