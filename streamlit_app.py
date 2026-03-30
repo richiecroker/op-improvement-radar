@@ -13,6 +13,13 @@ from db import get_duckdb_connection
 from google.cloud import bigquery, storage
 from google.oauth2 import service_account
 
+import streamlit as st
+import plotly.graph_objects as go
+import pandas as pd
+
+from database import get_duckdb_connection
+from measures import _fetch_measures_df
+
 def _credentials():
     return service_account.Credentials.from_service_account_info(st.secrets["gcp_service_account"])
 
@@ -34,38 +41,47 @@ st.info(
 Please let us know what you think, and what you'd like to see.  Email us at [bennett@phc.ox.ac.uk](mailto:bennett@phc.ox.ac.uk)"""
 )
 
-conn = get_duckdb_connection()
+PLOT_COLOURS = ["red", "green", "orange", "purple", "brown"]
 
-#measures = conn.execute(
-#    "SELECT DISTINCT measure FROM measures ORDER BY measure"
-#).df()["measure"].tolist()#
-#
-#selected_measure = st.selectbox("Select a measure", measures)
+st.title("Improvement Radar")
 
 conn = get_duckdb_connection()
-st.write(conn.execute("SELECT * FROM measures LIMIT 5").df())
 
-df = conn.execute(
+# --- Selectors ---
+measures_df = _fetch_measures_df()
+measure_options = dict(zip(measures_df["name"], measures_df["measure_id"]))
+selected_name = st.selectbox("Select a measure", sorted(measure_options.keys()))
+selected_measure = measure_options[selected_name]
+
+org_type = st.selectbox("Select organisation type", ["ccg", "pcn", "stp"])
+
+# --- Lookup measure metadata ---
+row = measures_df[measures_df["measure_id"] == selected_measure].iloc[0]
+is_percentage = row["is_percentage"]
+y_label = row["y_label"] if row["y_label"] else "Rate"
+
+# --- Filter orgs ---
+filtered_orgs = conn.execute(
     """
     WITH base AS (
         SELECT * FROM measures
-        WHERE measure = 'aafpercent' AND org_type = 'ccg'
+        WHERE measure = ? AND org_type = ?
         ORDER BY month
     ),
     ranked AS (
         SELECT *,
-            ROW_NUMBER() OVER (PARTITION BY org_id ORDER BY month)       AS rn_asc,
-            ROW_NUMBER() OVER (PARTITION BY org_id ORDER BY month DESC)  AS rn_desc
+            ROW_NUMBER() OVER (PARTITION BY org_id ORDER BY month)      AS rn_asc,
+            ROW_NUMBER() OVER (PARTITION BY org_id ORDER BY month DESC) AS rn_desc
         FROM base
     ),
     agg AS (
         SELECT
             org_id,
-            AVG(numerator)                                            AS mean_events,
-            AVG(CASE WHEN rn_asc  <= 6 THEN calc_value END)           AS start_rate,
-            AVG(CASE WHEN rn_desc <= 6 THEN calc_value END)           AS end_rate,
-            AVG(CASE WHEN rn_asc  <= 6 THEN percentile END)           AS start_pct,
-            AVG(CASE WHEN rn_desc <= 6 THEN percentile END)           AS end_pct
+            AVG(numerator)                                          AS mean_events,
+            AVG(CASE WHEN rn_asc  <= 6 THEN calc_value END)        AS start_rate,
+            AVG(CASE WHEN rn_desc <= 6 THEN calc_value END)        AS end_rate,
+            AVG(CASE WHEN rn_asc  <= 6 THEN percentile END)        AS start_pct,
+            AVG(CASE WHEN rn_desc <= 6 THEN percentile END)        AS end_pct
         FROM ranked
         GROUP BY org_id
     ),
@@ -84,16 +100,109 @@ df = conn.execute(
         LIMIT ?
     )
     SELECT DISTINCT v.org_id
-    FROM valid v;
+    FROM valid v
     """,
-    [20, 10, 0.8, 0.4, 10]
+    [selected_measure, org_type, 20, 10, 0.8, 0.4, 5]
+).df()["org_id"].tolist()
+
+# --- Deciles ---
+deciles = conn.execute(
+    """
+    SELECT
+        month,
+        PERCENTILE_CONT(0.1) WITHIN GROUP (ORDER BY calc_value) AS d10,
+        PERCENTILE_CONT(0.2) WITHIN GROUP (ORDER BY calc_value) AS d20,
+        PERCENTILE_CONT(0.3) WITHIN GROUP (ORDER BY calc_value) AS d30,
+        PERCENTILE_CONT(0.4) WITHIN GROUP (ORDER BY calc_value) AS d40,
+        PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY calc_value) AS d50,
+        PERCENTILE_CONT(0.6) WITHIN GROUP (ORDER BY calc_value) AS d60,
+        PERCENTILE_CONT(0.7) WITHIN GROUP (ORDER BY calc_value) AS d70,
+        PERCENTILE_CONT(0.8) WITHIN GROUP (ORDER BY calc_value) AS d80,
+        PERCENTILE_CONT(0.9) WITHIN GROUP (ORDER BY calc_value) AS d90
+    FROM measures
+    WHERE measure = ? AND org_type = ?
+    GROUP BY month
+    ORDER BY month
+    """,
+    [selected_measure, org_type]
 ).df()
 
-st.dataframe(df)
+# --- Raw data ---
+data = conn.execute(
+    "SELECT * FROM measures WHERE measure = ? AND org_type = ?",
+    [selected_measure, org_type]
+).df()
 
-st.dataframe(df)
+# --- Plot ---
+if len(filtered_orgs) == 0:
+    st.info("No organisations met the criteria for detecting substantial improvement on this measure.")
+else:
+    st.write(f"**{len(filtered_orgs)}** organisation(s) with improvement identified")
 
-st.dataframe(df)
+    fig = go.Figure()
+
+    # Decile lines
+    decile_cols = ["d10", "d20", "d30", "d40", "d50", "d60", "d70", "d80", "d90"]
+    for col in decile_cols:
+        is_median = col == "d50"
+        fig.add_trace(go.Scatter(
+            x=deciles["month"],
+            y=deciles[col],
+            mode="lines",
+            line=dict(
+                color="blue",
+                width=2 if is_median else 1,
+                dash="solid" if is_median else "dot"
+            ),
+            name="Median" if is_median else col,
+            showlegend=is_median,
+            opacity=0.6 if is_median else 0.3
+        ))
+
+    # Org lines
+    for i, org_id in enumerate(filtered_orgs):
+        org_name = conn.execute(
+            "SELECT name FROM orgs WHERE org_type = ? AND code = ?",
+            [org_type, org_id]
+        ).fetchone()
+        org_label = org_name[0] if org_name else org_id
+
+        org_data = data[data["org_id"] == org_id].sort_values("month")
+        fig.add_trace(go.Scatter(
+            x=org_data["month"],
+            y=org_data["calc_value"],
+            mode="lines",
+            line=dict(color=PLOT_COLOURS[i], width=2),
+            name=org_label
+        ))
+
+    fig.update_layout(
+        yaxis_title=y_label,
+        yaxis_tickformat=".0%" if is_percentage else None,
+        plot_bgcolor="white",
+        height=500,
+        margin=dict(l=40, r=20, t=20, b=40),
+        legend=dict(font=dict(size=12))
+    )
+    fig.update_xaxes(showgrid=True, title="Month")
+    fig.update_yaxes(showgrid=True)
+
+    st.plotly_chart(fig, use_container_width=True)
+
+    # Org table
+    st.subheader("Identified organisations")
+    org_names = []
+    for org_id in filtered_orgs:
+        org_name = conn.execute(
+            "SELECT name FROM orgs WHERE org_type = ? AND code = ?",
+            [org_type, org_id]
+        ).fetchone()
+        org_names.append({
+            "Code": org_id,
+            "Name": org_name[0] if org_name else org_id
+        })
+    st.dataframe(pd.DataFrame(org_names), use_container_width=True)
+
 
 
 # ── Information ─────────────────────────────────────────────────────────────────
