@@ -21,7 +21,7 @@ GCS_DB_PATH = "measures_app/measures.duckdb"
 LOCAL_DB = "/tmp/measures.duckdb"
 
 BQ_DATASET = "ebmdatalab.measures"
-SOURCE_TABLE = "ebmdatalab.measures.ccg_data_dummy"  # just used to check latest date
+SOURCE_TABLE = "ebmdatalab.measures.ccg_data_lpzomnibus"  # just used to check latest date
 SOURCE_DATE_COL = "month"
 
 TARGET_TABLE = "measures"
