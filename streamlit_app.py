@@ -76,18 +76,17 @@ st.dataframe(measures_df)
 
 PREFIXES = ["ccg", "pcn", "stp"]
 
-bq = _bq_client()
-existing_tables = {table.table_id for table in bq.list_tables("ebmdatalab.measures")}
-
-base_cols = ["month", "numerator", "denominator", "percentile"]
-
-org_id_col = {
-    "ccg": "pct_id",
-    "pcn": "pcn_id",
-    "stp": "stp_id",
-}
+progress = st.progress(0)
+status = st.empty()
 
 parts = []
+tables_total = sum(
+    1
+    for _, row in measures_df.iterrows()
+    if row["measure_id"]
+) * len(PREFIXES)
+
+seen = 0
 
 for _, row in measures_df.iterrows():
     measure_id = row["measure_id"]
@@ -95,31 +94,33 @@ for _, row in measures_df.iterrows():
         continue
 
     for prefix in PREFIXES:
+        seen += 1
         table_name = f"{prefix}_data_{measure_id}"
+
+        status.write(f"Checking {table_name}")
+        progress.progress(min(seen / tables_total, 1.0))
+
         if table_name not in existing_tables:
             continue
 
         source_col = org_id_col[prefix]
+        select_sql = ", ".join([
+            *base_cols,
+            f"{source_col} AS org_id",
+            f"'{prefix}' AS org_type",
+            f"'{measure_id}' AS measure",
+        ])
 
-        select_sql = ", ".join(
-            base_cols + [
-                f"{source_col} AS org_id",
-                f"'{prefix}' AS org_type",
-                f"'{measure_id}' AS measure",
-            ]
-        )
-
-        from_sql = f"`ebmdatalab.measures.{table_name}`"
-        parts.append(f"SELECT {select_sql} FROM {from_sql}")
+        parts.append(f"SELECT {select_sql} FROM `ebmdatalab.measures.{table_name}`")
 
 sql = "\nUNION ALL\n".join(parts)
 
-st.write(f"Querying {len(parts)} tables...")
-
-with st.spinner("Running BigQuery job..."):
+status.write(f"Running BigQuery over {len(parts)} tables...")
+with st.spinner("Querying BigQuery..."):
     df = bq.query(sql).result().to_dataframe()
 
-st.success("Done")
+progress.progress(1.0)
+status.write("Done")
 
 
 # ── Information ─────────────────────────────────────────────────────────────────
