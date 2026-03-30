@@ -74,7 +74,7 @@ st.dataframe(measures_df)
 
 PREFIXES = ["ccg", "pcn", "stp"]
 
-sample_table = bq.get_table(f"{PROJECT}.{DATASET}.ccg_data_lpzomnibus")
+sample_table = bq.get_table(f"ebmdatalab.measures.ccg_data_lpzomnibus")
 col_list = ", ".join(
     f.name for f in sample_table.schema
     if f.name not in {"stp_id", "regional_team_id"}
