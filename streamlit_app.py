@@ -73,7 +73,7 @@ measures_df = pd.DataFrame(rows)
 st.dataframe(measures_df)
 
 PREFIXES = ["ccg", "pcn", "stp"]
-
+bq = _bq_client()
 sample_table = bq.get_table(f"ebmdatalab.measures.ccg_data_lpzomnibus")
 col_list = ", ".join(
     f.name for f in sample_table.schema
