@@ -39,7 +39,7 @@ def _github_headers():
     return {"Authorization": f"token {st.secrets['github_token']}"}
 
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=86400)
 def _fetch_measures_df() -> pd.DataFrame:
     res = requests.get(REPO_URL, headers=_github_headers(), timeout=15)
     res.raise_for_status()
@@ -60,25 +60,14 @@ def _normalise_df(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def _latest_bq_month() -> str | None:
-    bq = _bq_client()
-    measures_df = _fetch_measures_df()
-    existing = {t.table_id for t in bq.list_tables(BQ_DATASET)}
-    source = next(
-        (f"{p}_data_{row['measure_id']}" for _, row in measures_df.iterrows()
-         for p in PREFIXES if f"{p}_data_{row['measure_id']}" in existing),
-        None,
-    )
-    if not source:
-        return None
-    try:
-        row = list(bq.query(f"SELECT DATE(MAX(month)) FROM `{BQ_DATASET}.{source}`").result())[0]
-        return str(row[0]) if row[0] else None
-    except Exception:
-        return None
+def _latest_bq_month():
+    row = _bq_client().query(
+        "SELECT DATE(MAX(month)) FROM `ebmdatalab.measures.ccg_data_ace`"
+    ).result()[0]
+    return str(row[0])
 
 
-def _cached_month(conn) -> str | None:
+def _cached_month(conn):
     try:
         result = conn.execute(f"SELECT MAX(CAST(month AS DATE)) FROM {TARGET_TABLE}").fetchone()
         return str(result[0]) if result and result[0] else None
@@ -104,59 +93,46 @@ def _save_to_gcs(bucket):
     tmp = LOCAL_DB + ".upload.tmp"
     shutil.copy2(LOCAL_DB, tmp)
     try:
-        blob = bucket.blob(GCS_DB_PATH)
-        blob.upload_from_filename(tmp)
-        blob.reload()
-        if not blob.exists():
-            raise RuntimeError("Upload reported success but blob is missing")
+        bucket.blob(GCS_DB_PATH).upload_from_filename(tmp)
     finally:
         if os.path.exists(tmp):
             os.remove(tmp)
 
 
 @st.cache_resource
-def _open_connection():
-    return duckdb.connect(LOCAL_DB)
-
-
 def get_duckdb_connection():
     bucket = _gcs_client().bucket(BUCKET_NAME)
-    blob = bucket.blob(GCS_DB_PATH)
     latest_bq = _latest_bq_month()
 
     # 1) Local DB fresh?
     if os.path.exists(LOCAL_DB):
-        try:
-            conn = duckdb.connect(LOCAL_DB)
-            tables = [r[0] for r in conn.execute("SHOW TABLES").fetchall()]
-            if TARGET_TABLE in tables and _cached_month(conn) == latest_bq:
-                conn.close()
-                if not blob.exists():
-                    _save_to_gcs(bucket)
-                return _open_connection()
-            conn.close()
-        except Exception:
-            pass
+        conn = duckdb.connect(LOCAL_DB)
+        tables = [r[0] for r in conn.execute("SHOW TABLES").fetchall()]
+        if TARGET_TABLE in tables and _cached_month(conn) == latest_bq:
+            return conn
+        conn.close()
 
     # 2) GCS cache fresh?
     tmp_path = LOCAL_DB + ".tmp"
     try:
         with st.spinner("Downloading cached DB..."):
-            blob.download_to_filename(tmp_path)
+            bucket.blob(GCS_DB_PATH).download_to_filename(tmp_path)
         os.replace(tmp_path, LOCAL_DB)
         conn = duckdb.connect(LOCAL_DB)
         tables = [r[0] for r in conn.execute("SHOW TABLES").fetchall()]
         if TARGET_TABLE in tables and _cached_month(conn) == latest_bq:
-            conn.close()
-            return _open_connection()
+            return conn
         conn.close()
     except Exception:
         if os.path.exists(tmp_path):
             os.remove(tmp_path)
 
     # 3) Rebuild from BQ
-    if os.path.exists(LOCAL_DB):
-        os.remove(LOCAL_DB)
+    for ext in ["", ".wal"]:
+        p = LOCAL_DB + ext
+        if os.path.exists(p):
+            os.remove(p)
+
     with st.spinner("Rebuilding database..."):
         conn = duckdb.connect(LOCAL_DB)
         _rebuild(conn)
@@ -164,4 +140,4 @@ def get_duckdb_connection():
         conn.close()
 
     _save_to_gcs(bucket)
-    return _open_connection()
+    return duckdb.connect(LOCAL_DB)
