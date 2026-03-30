@@ -74,7 +74,8 @@ st.dataframe(measures_df)
 
 
 PREFIXES = ["ccg", "pcn", "stp"]
-
+PROJECT = ["ebmdatalab"]
+DATASET = ["measures"]
 bq = _bq_client()
 
 existing_tables = {table.table_id for table in bq.list_tables(f"{PROJECT}.{DATASET}")}
