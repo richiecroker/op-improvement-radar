@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 # --- Constants ---
 BUCKET_NAME = "ebmdatalab"
-GCS_DB_PATH = "measures_app/measures.duckdb"
+GCS_DB_PATH = "improvement_radar/measures.duckdb"
 LOCAL_DB = "/tmp/measures.duckdb"
 
 BQ_DATASET = "ebmdatalab.measures"
